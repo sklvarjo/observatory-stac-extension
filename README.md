@@ -1,42 +1,120 @@
 # Observatory STAC Extension
 
-Draft **0.1.0**, owned by Observatory. Not an endorsed STAC community extension.
+**Work in progress. No versioned release has been published.** Both the schema
+and its adoption guidance are under active development. Not an endorsed STAC
+community extension.
 
 The extension adds variable selection and companion-column semantics to Table
 columns and retains the in-situ station metadata previously proposed by Observatory.
 It also extends STAC CF v1.0.0 to Table columns; upstream CF v1.0.0 does not traverse
 `table:columns`. It does not redefine the CF vocabulary.
 
-## Publication
+## Development Schema
 
-`v0.1.0/schema.json` is ready for GitHub Pages after choosing the repository URL.
-Its current identity, `https://example.org/observatory-stac-extension/v0.1.0/schema.json`,
-is a reserved **UNPUBLISHED PLACEHOLDER**, not a live service.
+The source is [schema.json](schema.json). Its unversioned publication URL is:
 
-1. Replace both occurrences of the placeholder in the schema (`$id` and the
-   declaration constant) with `https://OWNER.github.io/REPOSITORY/v0.1.0/schema.json`.
-2. Publish this directory in the separate repository. Enable GitHub Pages from
-   the publishing branch root. Keep `.nojekyll`; JSON needs no build step.
-3. Verify that the versioned URL returns the schema, not an HTML page. Treat
-   published versions as immutable; publish incompatible changes under a new version.
-4. Replace the placeholder in the example below and every upstream declaration.
-   Preserve other `stac_extensions` entries. Do not declare the example.org URL upstream.
-5. Update Observatory's vendored schema identity at
-   `packages/data/src/schemas/observatory/v0.1.0/schema.json`, regenerate with
-   `node packages/data/scripts/generate-schemas.mjs`, and rebuild. Hints derive their
-   URL from this schema. The pinned copy works offline. To fetch *unvendored* future
-   versions, explicitly add the actual GitHub Pages hostname to
-   `SCHEMA_HOST_ALLOWLIST`; do not allow all github.io hosts.
+https://sklvarjo.github.io/observatory-stac-extension/schema.json
 
-The application currently registers the placeholder only as an offline draft.
-No production hostname has been assumed or allowlisted.
+This URL follows deployments from `main`, not a release tag. Edit the schema and
+merge changes without changing a version number or the URL. Breaking changes are
+possible during development. Publishing to Pages does not create a release or
+promise compatibility. Feature branches, including pull requests, do not deploy
+over the public schema.
+
+Providers adopting this draft should record the source commit and retain a local
+schema snapshot for reproducible validation. Review changes before refreshing
+cached or vendored copies, and coordinate incompatible changes with consumers.
+The same declaration URL may resolve to different schema contents over time.
+
+## GitHub Pages Setup
+
+These steps apply to this extension repository, independently of any consuming app.
+
+1. Merge the schema, documentation and `.github/workflows/pages.yml` into `main`.
+2. As a repository administrator, open **Settings > Pages > Build and deployment**
+  and select **GitHub Actions** as the source. Enable Actions if repository or
+  organization policy has disabled it. This is the one-time enablement step;
+  the deployment workflow does not require an administrator token.
+3. In **Settings > Environments > github-pages**, allow deployments from `main`
+  only. Keep any required reviewer policy appropriate to the repository.
+4. Push to `main`, or run **Publish development schema** manually from `main`.
+  The workflow stages only the schema and README, deploys them with the Pages
+  actions, then verifies the public JSON identity, content and CORS response.
+5. Confirm the deployment URL shown by Actions. The intended host/path must match
+  both `$id` and the `stac_extensions` constant in the schema. A renamed repository
+  or custom domain needs a deliberate URL migration, not a silent declaration change.
+
+The workflow is deliberately restricted to `main`, including manual runs. To use
+a different publishing branch, change both its trigger/job guard and the Pages
+environment policy together. Working-branch names do not otherwise affect this guide.
+See [GitHub's custom Pages workflow instructions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+
+### Cross-Origin Access
+
+Public schema responses must include:
+
+```http
+Access-Control-Allow-Origin: *
+```
+
+GitHub Pages manages HTTP headers; repository `_headers` files, `.htaccess` and
+workflow YAML cannot configure its CORS response. Public Pages responses normally
+provide this wildcard header. The deployment check verifies it on the actual
+schema response instead of pretending to install a header rule. If it is absent,
+the workflow fails: inspect custom-domain/proxy behavior and use hosting or a proxy
+with configurable response headers if necessary. A failing post-deployment check
+does not roll back the deployment.
+
+For an alternative host, configure `Access-Control-Allow-Origin: *` on successful
+schema GET/HEAD responses (and error responses where supported). Serve JSON as
+`application/json` or `application/schema+json` over HTTPS. Consumers should fetch
+public schemas without credentials or custom request headers. Wildcard CORS does
+not support credentialed requests; avoid unnecessary preflight requests. If your
+host/client needs OPTIONS, configure that host to permit GET/HEAD and the required
+request headers. CORS permission does not bypass a client's schema-host allowlist.
+
+After deployment, verify from any machine with Node.js 22 or newer:
+
+```sh
+node scripts/check-pages.mjs https://sklvarjo.github.io/observatory-stac-extension/
+```
+
+The check sends an `Origin` header, requires wildcard CORS, checks JSON content
+type and compares the served schema with the local source. Browser smoke test:
+
+```js
+fetch('https://sklvarjo.github.io/observatory-stac-extension/schema.json', {
+  credentials: 'omit'
+}).then(response => response.json()).then(schema => console.log(schema.$id));
+```
+
+## First Versioned Release
+
+Do this only after the field semantics and provider/consumer behavior are ready
+for a compatibility commitment. Until then, keep developing the root schema.
+
+1. Review supported STAC/Table/CF versions, schema validation, examples, scientific
+  constraints and migration guidance with adopting providers and consumers.
+2. Choose the first release version. Copy the reviewed root schema to a new
+  `vX.Y.Z/schema.json`; change its `$id` and declaration constant to the matching
+  versioned Pages URL. Do not redirect that URL to the mutable root schema.
+3. Include release-specific documentation, examples, changelog and migration notes.
+  Update the Pages staging and verification scripts to include all released
+  directories and check their identities and CORS. Keep older releases available.
+4. Merge to `main`, deploy, and verify every released URL before publishing the
+  matching Git tag and GitHub Release. Mark prereleases explicitly when applicable.
+5. Tell providers to opt into the versioned declaration and update pinned copies
+  deliberately. Never silently rewrite declarations in existing catalogs.
+6. Freeze published versioned schema files. Further changes need a new release
+  version under the chosen compatibility policy. The root `schema.json` remains
+  an explicitly mutable development endpoint for subsequent work.
 
 ## Placement And Declarations
 
 - `table:columns`: Collection top level, Item `properties`, `assets` and `item_assets`.
 - `obs:*` column fields and `cf:*` fields below: inside each Column Object only.
 - `in_situ:*`: Item `properties` only, not geometry, Collections, assets or links.
-- Declare Table (the current HIKET release is v1.2.0) and this extension for column
+- Declare Table (the example below uses v1.2.0) and this extension for column
   annotations; additionally declare CF v1.0.0 when using its fields. Keep an already
   valid Table declaration; no forced upgrade is implied.
 - Validate against STAC core and all declared extension schemas. This schema does
@@ -47,7 +125,7 @@ No production hostname has been assumed or allowlisted.
   "stac_extensions": [
     "https://stac-extensions.github.io/table/v1.2.0/schema.json",
     "https://stac-extensions.github.io/cf/v1.0.0/schema.json",
-    "https://example.org/observatory-stac-extension/v0.1.0/schema.json"
+    "https://sklvarjo.github.io/observatory-stac-extension/schema.json"
   ],
   "table:columns": [
     {
@@ -87,8 +165,8 @@ No production hostname has been assumed or allowlisted.
 }
 ```
 
-This is a Collection fragment, not a complete STAC document or a claim about any
-HIKET temperature error. Merge it at the appropriate scope without replacing other
+This is an illustrative Collection fragment, not a complete STAC document or a
+claim about a particular dataset. Merge it at the appropriate scope without replacing other
 metadata. The example QC codes are valid only for a source using that codebook.
 
 ## Column Fields
@@ -127,14 +205,14 @@ parent, not relative half-widths. Producers must define behavior near zero and f
 negative parent values; clients must not silently turn these into symmetric bars.
 Neither `uncertainty_type` nor `confidence_level` applies to a quality flag or spread.
 
-JSON Schema checks shapes, supported values and conditional requirements. The
-Observatory scan additionally checks target existence, duplicate names/category
-codes, paired interval metadata and temporal ordering. Neither proves unit or
+JSON Schema checks shapes, supported values and conditional requirements. Providers
+and validators must additionally check target existence, duplicate names/category
+codes, paired interval metadata and temporal ordering. Neither check proves unit or
 scientific equivalence, matching sample populations, or the contents of data files.
 
 ## CF Semantics
 
-The audit uses [CF standard names v95](https://raw.githubusercontent.com/cf-convention/vocabularies/refs/heads/main/docs/cf-standard-names/version/95/cf-standard-name-table.xml)
+Reference vocabulary: [CF standard names v95](https://raw.githubusercontent.com/cf-convention/vocabularies/refs/heads/main/docs/cf-standard-names/version/95/cf-standard-name-table.xml)
 and [CF 1.7 Appendix C](https://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/build/apc.html).
 
 | Modifier | Units and meaning |
@@ -160,9 +238,8 @@ interchangeable by editing unit labels.
 
 ## In-Situ Metadata
 
-The four fields from the earlier Observatory in-situ draft are included without
-changing their names or units. This combined schema supersedes that standalone
-unpublished draft for new adoption; do not declare both drafts.
+The extension includes these four optional Item properties. Declare this schema
+for them; no separate in-situ extension is required.
 
 | Item property | Definition |
 | --- | --- |
@@ -179,35 +256,16 @@ sampling height does not prove WGS 84 ellipsoidal GeoJSON z. Preserve station an
 sensor locations independently, and do not invent a vertical datum. Missing values
 are omitted, not null or sentinels.
 
-## Audit And Scanner
+## Provider Adoption
 
-`variable-audit.md` inventories all 151 distinct variable metadata signatures in
-the 541-document local HIKET snapshot. `variable-audit.json` retains exact source
-descriptions/units, occurrences, proposed fields, conditions, the 23 reviewed CF
-definitions and the XML SHA-256. It includes cube variables as well as table columns;
-`obs:*` column roles/relationships are not proposed on cube variables.
-`scan-hints.json` is the upstream handoff: exact findings and unconditional JSON
-Patch operations for each of the 28 affected documents (494 operations in this snapshot).
+Inventory actual column names, descriptions, units and codebooks before annotating
+a dataset. Verify quantity, sign convention, reference frame, aggregation domain
+and uncertainty interpretation. Units alone do not prove equivalence. Do not infer
+error bars from column suffixes, relabel concentration spread as flux uncertainty,
+or equate processing provenance with quality.
 
-The browser's debug Scan shows literal JSON Patch operations with escaped JSON
-pointers. Conditional CF candidates appear separately and are **not** unconditional
-patches. Apply only adopted recommendations; do not overwrite conflicting existing
-annotations. Unknown codebooks and uncertainty definitions remain unresolved.
-Exact metadata signatures and audited units guard recommendations, so changed
-source descriptions/units need review and regeneration. No input catalog is edited.
-
-Regenerate inside the Observatory workspace after downloading the linked XML to
-`temp/cf-standard-name-table-v95.xml` and preparing `temp/hiket-stac`:
-
-```sh
-node packages/data/scripts/audit-observatory.mjs
-node packages/data/scripts/generate-schemas.mjs
-pnpm --filter @observatory/data build
-node packages/data/scripts/audit-observatory.mjs --check-hints
-node --test --test-name-pattern="Observatory" packages/data/test/build-stac-from.unit.test.mjs
-```
-
-The generator overwrites the browser subset and temporary audit/schema files,
-but not this README. `--check-hints` uses the freshly built package, validates the
-patched in-memory documents and rescan idempotence, and exports `scan-hints.json`.
-The full CF XML is not bundled in the application.
+Preserve existing metadata and extension declarations. Apply only reviewed
+annotations; keep conditional candidates separate from executable metadata patches.
+Unknown codebooks, reference surfaces and confidence levels must remain unknown
+until the producer can establish them. Revalidate against STAC core and every
+declared extension, then test with the clients that will consume the catalog.

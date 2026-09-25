@@ -1,9 +1,9 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://example.org/observatory-stac-extension/v0.1.0/schema.json",
-  "title": "Observatory STAC Extension (draft 0.1.0)",
-  "description": "Column semantics and in-situ station metadata. Unpublished Observatory draft, not a STAC community extension. Validate together with STAC core and the Table and CF extensions when used.",
-  "$comment": "PUBLICATION PLACEHOLDER: replace example.org/observatory-stac-extension with the GitHub Pages host and repository before declaring this extension in production catalogs.",
+  "$id": "https://sklvarjo.github.io/observatory-stac-extension/schema.json",
+  "title": "Observatory STAC Extension (development)",
+  "description": "Continuously developing Observatory metadata extension for column semantics and in-situ station metadata. Not a STAC community extension or a released version. Validate together with STAC core and the Table and CF extensions when used.",
+  "$comment": "DEVELOPMENT SCHEMA: this stable unversioned URL intentionally tracks ongoing work deployed from main. It may change incompatibly without a version bump. Do not use it as a release identifier or for immutable production declarations.",
   "type": "object",
   "required": ["type", "stac_extensions"],
   "properties": {
@@ -11,7 +11,7 @@
     "stac_extensions": {
       "type": "array",
       "items": { "type": "string" },
-      "contains": { "const": "https://example.org/observatory-stac-extension/v0.1.0/schema.json" }
+      "contains": { "const": "https://sklvarjo.github.io/observatory-stac-extension/schema.json" }
     },
     "assets": { "type": "object", "additionalProperties": { "$ref": "#/definitions/tableContainer" } },
     "item_assets": { "type": "object", "additionalProperties": { "$ref": "#/definitions/tableContainer" } },
