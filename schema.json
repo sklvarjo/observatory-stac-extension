@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sklvarjo.github.io/observatory-stac-extension/schema.json",
+  "title": "Observatory STAC Extension (development)",
+  "description": "Continuously developing Observatory metadata extension for column semantics and in-situ station metadata. Not a STAC community extension or a released version. Validate together with STAC core and the Table and CF extensions when used.",
+  "$comment": "DEVELOPMENT SCHEMA: this stable unversioned URL intentionally tracks ongoing work deployed from main. It may change incompatibly without a version bump. Do not use it as a release identifier or for immutable production declarations.",
+  "type": "object",
+  "required": ["type", "stac_extensions"],
+  "properties": {
+    "type": { "enum": ["Feature", "Collection"] },
+    "stac_extensions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "contains": { "const": "https://sklvarjo.github.io/observatory-stac-extension/schema.json" }
+    },
+    "assets": { "type": "object", "additionalProperties": { "$ref": "#/definitions/tableContainer" } },
+    "item_assets": { "type": "object", "additionalProperties": { "$ref": "#/definitions/tableContainer" } },
+    "links": { "type": "array", "items": { "$ref": "#/definitions/noCustomFields" } }
+  },
+  "allOf": [
+    { "$ref": "#/definitions/noCustomFields" },
+    {
+      "if": { "properties": { "type": { "const": "Feature" } } },
+      "then": {
+        "required": ["properties"],
+        "not": { "required": ["table:columns"] },
+        "properties": { "properties": { "$ref": "#/definitions/itemFields" } }
+      },
+      "else": { "$ref": "#/definitions/tableContainer" }
+    }
+  ],
+  "definitions": {
+    "noCustomFields": { "type": "object", "propertyNames": { "pattern": "^(?!(obs|in_situ):)" } },
+    "tableContainer": {
+      "allOf": [
+        { "$ref": "#/definitions/noCustomFields" },
+        { "properties": { "table:columns": { "type": "array", "items": { "$ref": "#/definitions/column" } } } }
+      ]
+    },
+    "itemFields": {
+      "type": "object",
+      "properties": {
+        "table:columns": { "type": "array", "items": { "$ref": "#/definitions/column" } },
+        "in_situ:station_altitude": {
+          "type": "number",
+          "title": "Station elevation above sea level",
+          "description": "Station elevation above sea level in metres, preserving ICOS cpmeta:hasElevation. Precise datum and station reference point may be unknown. Not sensor height or WGS 84 ellipsoidal height; never automatically copy to GeoJSON z."
+        },
+        "in_situ:station_altitude_vertical_datum": {
+          "type": "string", "minLength": 1,
+          "title": "Station elevation vertical datum",
+          "description": "Verified vertical datum or CRS identifier, preferably an authoritative URI. Omit when unknown."
+        },
+        "in_situ:sensor_height_above_ground": {
+          "type": "number", "minimum": 0,
+          "title": "Sensor or sampling inlet height above ground",
+          "description": "Vertical distance in metres above local ground to the sensor or sampling inlet. Use only when the ground reference is verified. ICOS samplingHeight alone does not establish that reference."
+        },
+        "in_situ:sampling_height": {
+          "type": "number",
+          "title": "Sampling height",
+          "description": "Sampling height in metres, preserving ICOS cpmeta:hasSamplingHeight when its reference surface has not been verified. Not absolute elevation."
+        }
+      },
+      "dependencies": { "in_situ:station_altitude_vertical_datum": ["in_situ:station_altitude"] },
+      "patternProperties": { "^(?!(obs|in_situ):)": {} },
+      "additionalProperties": false
+    },
+    "column": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "obs:temporal_extent": {
+          "title": "Column temporal coverage",
+          "description": "Inclusive temporal coverage of values in this column, independent of other columns. Use ISO calendar dates (whole days) or RFC 3339 timestamps with offsets, retaining source precision; null means an open bound. At least one bound must be known and start must not be after end. Do not invent UTC instants from dates.",
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "items": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date" }, { "type": "string", "format": "date-time" }] },
+          "not": { "const": [null, null] }
+        },
+        "cf:cell_methods": {
+          "title": "CF cell methods",
+          "description": "CF v1.0.0 cell-method array, extended to Table columns. Use actual aggregation axes, for example time: standard_deviation only after confirming the temporal sample domain. Not an uncertainty declaration.",
+          "$ref": "https://stac-extensions.github.io/cf/v1.0.0/schema.json#/definitions/fields/properties/cf:cell_methods"
+        },
+        "obs:role": {
+          "title": "Column role",
+          "description": "measurement: selectable observed or derived quantity; coordinate: time/position/index; ancillary: companion statistics, quality or processing status; diagnostic: instrument or processing diagnostic.",
+          "enum": ["measurement", "coordinate", "ancillary", "diagnostic"]
+        },
+        "obs:related": {
+          "title": "Related columns",
+          "description": "Companion columns for this variable in the same table: one value per matching row. Targets must exist and column names must be unique. No inference from names or units alone.",
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "$ref": "#/definitions/relationship" }
+        },
+        "obs:categories": {
+          "title": "Category meanings",
+          "description": "Exact categorical values, not bit masks or an implied quality ranking. Values and machine-readable meanings must each be unique. Processing methods are not automatically good/bad quality.",
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {
+            "type": "object", "required": ["value", "meaning"],
+            "properties": {
+              "value": { "type": ["number", "string", "boolean"] },
+              "meaning": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "title": { "type": "string", "minLength": 1 },
+              "description": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "cf:standard_name": {
+          "title": "CF standard name",
+          "description": "A CF standard name, optionally followed by one CF standard-name modifier separated by one space. This extension adds Table column placement; it does not redefine CF. Check the name and physical units against the published CF vocabulary. Standard deviation is a cell method, not a standard-name modifier.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*( (detection_minimum|number_of_observations|standard_error|status_flag))?$"
+        }
+      },
+      "patternProperties": { "^(?!(obs|cf|in_situ):)": {} },
+      "additionalProperties": false
+    },
+    "relationship": {
+      "type": "object", "required": ["column", "relation"],
+      "properties": {
+        "column": { "type": "string", "minLength": 1 },
+        "relation": {
+          "enum": ["quality_flag", "processing_flag", "standard_deviation", "standard_error", "confidence_interval_lower", "confidence_interval_upper", "number_of_observations", "detection_minimum"]
+        },
+        "confidence_level": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 },
+        "uncertainty_type": { "enum": ["absolute", "relative"] },
+        "multiplier": { "type": "number", "exclusiveMinimum": 0 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "relation": { "enum": ["confidence_interval_lower", "confidence_interval_upper"] } } },
+          "then": { "required": ["confidence_level"] },
+          "else": { "not": { "required": ["confidence_level"] } }
+        },
+        {
+          "if": { "properties": { "relation": { "enum": ["standard_error", "confidence_interval_lower", "confidence_interval_upper"] } } },
+          "then": { "required": ["uncertainty_type"] },
+          "else": { "not": { "required": ["uncertainty_type"] } }
+        },
+        {
+          "if": { "properties": { "relation": { "const": "standard_error" } } },
+          "else": { "not": { "required": ["multiplier"] } }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}
