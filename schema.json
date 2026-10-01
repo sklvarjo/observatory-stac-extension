@@ -34,13 +34,19 @@
     "tableContainer": {
       "allOf": [
         { "$ref": "#/definitions/noCustomFields" },
-        { "properties": { "table:columns": { "type": "array", "items": { "$ref": "#/definitions/column" } } } }
+        { "properties": {
+          "table:columns": { "type": "array", "items": { "$ref": "#/definitions/column" } },
+          "cube:variables": { "type": "object", "additionalProperties": { "$ref": "#/definitions/variable" } },
+          "cube:dimensions": { "$ref": "#/definitions/dimensions" }
+        } }
       ]
     },
     "itemFields": {
       "type": "object",
       "properties": {
         "table:columns": { "type": "array", "items": { "$ref": "#/definitions/column" } },
+        "cube:variables": { "type": "object", "additionalProperties": { "$ref": "#/definitions/variable" } },
+        "cube:dimensions": { "$ref": "#/definitions/dimensions" },
         "in_situ:station_altitude": {
           "type": "number",
           "title": "Station elevation above sea level",
@@ -66,11 +72,107 @@
       "patternProperties": { "^(?!(obs|in_situ):)": {} },
       "additionalProperties": false
     },
+    "timeStep": {
+      "type": "string",
+      "pattern": "^(P[1-9][0-9]*[YMD]|PT[1-9][0-9]*[HM]|PT([1-9][0-9]*(\\.[0-9]{1,3})?|0\\.(?!0{1,3}S)[0-9]{1,3})S)$",
+      "description": "A positive integer multiple of years, months, days, hours, minutes or seconds. Whole milliseconds may be expressed as fractional seconds. No weeks or mixed-unit steps."
+    },
+    "timeOffset": {
+      "type": "object",
+      "properties": {
+        "years": { "type": "integer" }, "months": { "type": "integer" },
+        "days": { "type": "integer" }, "hours": { "type": "integer" },
+        "minutes": { "type": "integer" }, "seconds": { "type": "integer" },
+        "milliseconds": { "type": "integer" }
+      },
+      "additionalProperties": false,
+      "description": "Signed calendar years/months in the temporal dimension's obs:timezone_offset (UTC if omitted), then elapsed days/time. Empty object means zero. Impossible dates are errors, never clamped."
+    },
+    "integration": {
+      "title": "Sample temporal integration",
+      "description": "Variable-level temporal support, or a default on a temporal dimension. Use instantaneous for point observations, or an object for half-open integration intervals. A variable's declaration or CF point method overrides dimension defaults. Native coordinate-cell bounds alone do not establish integration. Overlapping observations are allowed; aggregation may require non-overlapping inputs.",
+      "oneOf": [
+        {
+          "const": "instantaneous",
+          "description": "Explicitly non-integrated measurements at the sample timestamps. Shared native coordinate-cell bounds are permitted, but are not this variable's integration intervals."
+        },
+        {
+          "type": "object", "required": ["start", "end"],
+          "properties": {
+            "start": { "$ref": "#/definitions/timeOffset" },
+            "end": { "$ref": "#/definitions/timeOffset" },
+            "reference": { "enum": ["sample", "nominal"], "default": "sample" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object", "required": ["start_column", "end_column"],
+          "properties": {
+            "start_column": { "type": "string", "minLength": 1 },
+            "end_column": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "obs:origin": {
+            "type": "string", "format": "date-time", "title": "Sampling origin",
+            "description": "Exact RFC 3339 grid anchor, normalized to UTC. Calendar arithmetic uses obs:timezone_offset, not the offset written in this timestamp. Monthly grids require days 1-28 and yearly grids forbid February 29 in that calendar. The phase, including time of day, is retained."
+          },
+          "obs:timezone_offset": {
+            "type": "integer", "minimum": -840, "maximum": 840,
+            "title": "Fixed UTC offset",
+            "description": "Integer minutes east of UTC: 120 means UTC+02:00, -300 means UTC-05:00. Used to decode timezone-free sample/bounds labels and for sampling/integration calendar arithmetic. Explicit timestamp offsets remain authoritative for their instants. Does not alter STAC coverage timestamps or native CF time decoding. Defaults to UTC; never applies DST, solar time or machine-local timezone."
+          },
+          "obs:nominal_step": {
+            "$ref": "#/definitions/timeStep", "title": "Approximate sampling cadence",
+            "description": "Nominal grid used for alignment without replacing exact acquisition timestamps. Actual Datacube step must be null."
+          },
+          "obs:alignment_tolerance": {
+            "type": "integer", "minimum": 0, "title": "Nominal alignment tolerance",
+            "description": "Maximum deviation in milliseconds, strictly less than half the shortest sampling step. At most one observation per nominal slot; never silently merges samples."
+          },
+          "obs:timestamp_column": { "type": "string", "minLength": 1, "title": "Table timestamp column" },
+          "obs:timestamp_format": { "enum": ["iso8601", "yyyyMMddHHmm", "yyyy", "yyyy-MM"], "title": "Table timestamp encoding" },
+          "obs:integration": { "$ref": "#/definitions/integration" }
+        },
+        "patternProperties": { "^(?!obs:)": {} },
+        "additionalProperties": false,
+        "dependencies": {
+          "obs:origin": { "required": ["type"], "properties": { "type": { "const": "temporal" } } },
+          "obs:timezone_offset": { "required": ["type"], "properties": { "type": { "const": "temporal" } } },
+          "obs:nominal_step": {
+            "required": ["type", "step", "obs:origin", "obs:alignment_tolerance"],
+            "properties": { "type": { "const": "temporal" }, "step": { "type": "null" } }
+          },
+          "obs:alignment_tolerance": {
+            "required": ["obs:origin"],
+            "if": { "properties": { "obs:alignment_tolerance": { "exclusiveMinimum": 0 } } },
+            "then": { "required": ["obs:nominal_step", "step"], "properties": { "step": { "type": "null" } } }
+          },
+          "obs:timestamp_column": { "required": ["type"], "properties": { "type": { "const": "temporal" } } },
+          "obs:timestamp_format": ["obs:timestamp_column"],
+          "obs:integration": { "required": ["type"], "properties": { "type": { "const": "temporal" } } }
+        }
+      }
+    },
+    "variable": {
+      "type": "object",
+      "properties": { "obs:integration": { "$ref": "#/definitions/integration" } },
+      "patternProperties": { "^(?!obs:)": {} },
+      "additionalProperties": false
+    },
     "column": {
       "type": "object",
       "required": ["name"],
       "properties": {
         "name": { "type": "string", "minLength": 1 },
+        "obs:integration": { "$ref": "#/definitions/integration" },
         "obs:temporal_extent": {
           "title": "Column temporal coverage",
           "description": "Inclusive temporal coverage of values in this column, independent of other columns. Use ISO calendar dates (whole days) or RFC 3339 timestamps with offsets, retaining source precision; null means an open bound. At least one bound must be known and start must not be after end. Do not invent UTC instants from dates.",
