@@ -7,7 +7,12 @@
   "type": "object",
   "required": ["type", "stac_extensions"],
   "properties": {
-    "type": { "enum": ["Feature", "Collection"] },
+    "type": {
+      "oneOf": [
+        { "const": "Feature", "title": "Item (GeoJSON Feature)" },
+        { "const": "Collection", "title": "Collection" }
+      ]
+    },
     "stac_extensions": {
       "type": "array",
       "items": { "type": "string" },
@@ -80,10 +85,13 @@
     "timeOffset": {
       "type": "object",
       "properties": {
-        "years": { "type": "integer" }, "months": { "type": "integer" },
-        "days": { "type": "integer" }, "hours": { "type": "integer" },
-        "minutes": { "type": "integer" }, "seconds": { "type": "integer" },
-        "milliseconds": { "type": "integer" }
+        "years": { "type": "integer", "title": "Years", "description": "Signed number of calendar years, applied together with months in the calendar of obs:timezone_offset." },
+        "months": { "type": "integer", "title": "Months", "description": "Signed number of calendar months, applied together with years in the calendar of obs:timezone_offset." },
+        "days": { "type": "integer", "title": "Days", "description": "Signed number of elapsed days, applied after years and months." },
+        "hours": { "type": "integer", "title": "Hours", "description": "Signed number of elapsed hours, applied after years and months." },
+        "minutes": { "type": "integer", "title": "Minutes", "description": "Signed number of elapsed minutes, applied after years and months." },
+        "seconds": { "type": "integer", "title": "Seconds", "description": "Signed number of elapsed seconds, applied after years and months." },
+        "milliseconds": { "type": "integer", "title": "Milliseconds", "description": "Signed number of elapsed milliseconds, applied after years and months." }
       },
       "additionalProperties": false,
       "description": "Signed calendar years/months in the temporal dimension's obs:timezone_offset (UTC if omitted), then elapsed days/time. Empty object means zero. Impossible dates are errors, never clamped."
@@ -94,22 +102,39 @@
       "oneOf": [
         {
           "const": "instantaneous",
+          "title": "Instantaneous",
           "description": "Explicitly non-integrated measurements at the sample timestamps. Shared native coordinate-cell bounds are permitted, but are not this variable's integration intervals."
         },
         {
           "type": "object", "required": ["start", "end"],
           "properties": {
-            "start": { "$ref": "#/definitions/timeOffset" },
-            "end": { "$ref": "#/definitions/timeOffset" },
-            "reference": { "enum": ["sample", "nominal"], "default": "sample" }
+            "start": {
+              "title": "Interval start offset",
+              "description": "Offset of the start of each half-open integration interval from its reference time. Empty object means zero.",
+              "$ref": "#/definitions/timeOffset"
+            },
+            "end": {
+              "title": "Interval end offset",
+              "description": "Offset of the end of each half-open integration interval from its reference time. Intervals must have positive length.",
+              "$ref": "#/definitions/timeOffset"
+            },
+            "reference": {
+              "title": "Offset reference",
+              "description": "The time that the start and end offsets are relative to.",
+              "oneOf": [
+                { "const": "sample", "title": "Sample timestamp", "description": "The exact sample timestamp, or the expanded shorthand sample label. Default." },
+                { "const": "nominal", "title": "Nominal grid slot", "description": "The nominal grid slot of the sample. Requires a sampling grid." }
+              ],
+              "default": "sample"
+            }
           },
           "additionalProperties": false
         },
         {
           "type": "object", "required": ["start_column", "end_column"],
           "properties": {
-            "start_column": { "type": "string", "minLength": 1 },
-            "end_column": { "type": "string", "minLength": 1 }
+            "start_column": { "type": "string", "minLength": 1, "title": "Interval start column", "description": "Table column with the start of each row's integration interval. Bounds of shorthand sample labels are RFC 3339 timestamps." },
+            "end_column": { "type": "string", "minLength": 1, "title": "Interval end column", "description": "Table column with the end of each row's integration interval. Bounds of shorthand sample labels are RFC 3339 timestamps." }
           },
           "additionalProperties": false
         }
@@ -137,8 +162,20 @@
             "type": "integer", "minimum": 0, "title": "Nominal alignment tolerance",
             "description": "Maximum deviation in milliseconds, strictly less than half the shortest sampling step. At most one observation per nominal slot; never silently merges samples."
           },
-          "obs:timestamp_column": { "type": "string", "minLength": 1, "title": "Table timestamp column" },
-          "obs:timestamp_format": { "enum": ["iso8601", "yyyyMMddHHmm", "yyyy", "yyyy-MM"], "title": "Table timestamp encoding" },
+          "obs:timestamp_column": {
+            "type": "string", "minLength": 1, "title": "Table timestamp column",
+            "description": "Table column containing sample labels or exact timestamps."
+          },
+          "obs:timestamp_format": {
+            "title": "Table timestamp encoding",
+            "description": "How the timestamp column encodes times. Shorthand years and months expand to their grid coordinate, including the origin's phase. Timezone-free labels use obs:timezone_offset.",
+            "oneOf": [
+              { "const": "iso8601", "title": "ISO 8601", "description": "ISO 8601 date-times. Explicit offsets determine their own instants; timestamps without an offset use obs:timezone_offset." },
+              { "const": "yyyyMMddHHmm", "title": "Compact date and time", "description": "Year, month, day, hour and minute without separators, for example 202601311230." },
+              { "const": "yyyy", "title": "Year", "description": "Year label, for example 2026, expanded to the grid coordinate of that year." },
+              { "const": "yyyy-MM", "title": "Year and month", "description": "Year-month label, for example 2026-01, expanded to the grid coordinate of that month." }
+            ]
+          },
           "obs:integration": { "$ref": "#/definitions/integration" }
         },
         "patternProperties": { "^(?!obs:)": {} },
@@ -171,7 +208,10 @@
       "type": "object",
       "required": ["name"],
       "properties": {
-        "name": { "type": "string", "minLength": 1 },
+        "name": {
+          "type": "string", "minLength": 1, "title": "Column name",
+          "description": "Name of the column, as in the Table extension. Must be unique within table:columns; obs:related refers to columns by this name."
+        },
         "obs:integration": { "$ref": "#/definitions/integration" },
         "obs:temporal_extent": {
           "title": "Column temporal coverage",
@@ -188,7 +228,12 @@
         "obs:role": {
           "title": "Column role",
           "description": "measurement: selectable observed or derived quantity; coordinate: time/position/index; ancillary: companion statistics, quality or processing status; diagnostic: instrument or processing diagnostic.",
-          "enum": ["measurement", "coordinate", "ancillary", "diagnostic"]
+          "oneOf": [
+            { "const": "measurement", "title": "Measurement", "description": "Selectable observed or derived quantity, including categorical quantities." },
+            { "const": "coordinate", "title": "Coordinate", "description": "Time, position or index." },
+            { "const": "ancillary", "title": "Ancillary", "description": "Companion statistics, quality or processing status that describe another variable." },
+            { "const": "diagnostic", "title": "Diagnostic", "description": "Instrument or processing diagnostic." }
+          ]
         },
         "obs:related": {
           "title": "Related columns",
@@ -203,10 +248,10 @@
           "items": {
             "type": "object", "required": ["value", "meaning"],
             "properties": {
-              "value": { "type": ["number", "string", "boolean"] },
-              "meaning": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-              "title": { "type": "string", "minLength": 1 },
-              "description": { "type": "string", "minLength": 1 }
+              "value": { "type": ["number", "string", "boolean"], "title": "Value", "description": "The categorical value as stored in the column: a number, string or boolean." },
+              "meaning": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "title": "Meaning", "description": "Machine-readable meaning of the value as a lowercase snake_case identifier, unique within the list." },
+              "title": { "type": "string", "minLength": 1, "title": "Title", "description": "Human-readable label of the category, for example the wording of the source." },
+              "description": { "type": "string", "minLength": 1, "title": "Description", "description": "Human-readable explanation of the category." }
             },
             "additionalProperties": false
           }
@@ -224,14 +269,41 @@
     "relationship": {
       "type": "object", "required": ["column", "relation"],
       "properties": {
-        "column": { "type": "string", "minLength": 1 },
-        "relation": {
-          "enum": ["quality_flag", "processing_flag", "standard_deviation", "standard_error", "confidence_interval_lower", "confidence_interval_upper", "number_of_observations", "detection_minimum"]
+        "column": {
+          "type": "string", "minLength": 1, "title": "Companion column",
+          "description": "Exact, case-sensitive name of the companion column in the same table:columns array. Values are aligned row by row; self references are invalid."
         },
-        "confidence_level": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 },
-        "uncertainty_type": { "enum": ["absolute", "relative"] },
-        "multiplier": { "type": "number", "exclusiveMinimum": 0 },
-        "description": { "type": "string", "minLength": 1 }
+        "relation": {
+          "title": "Relation",
+          "description": "What the companion column says about this column. The direction is from this column to the companion.",
+          "oneOf": [
+            { "const": "quality_flag", "title": "Quality flag", "description": "Companion codes describe the quality of this variable; the codebook is required for interpretation." },
+            { "const": "processing_flag", "title": "Processing flag", "description": "Companion codes describe provenance or processing, for example measured versus gap-filled. Not a quality ranking." },
+            { "const": "standard_deviation", "title": "Standard deviation", "description": "Companion gives the statistical spread of the same quantity, population, coordinate frame and sample domain. Not automatically the uncertainty of a mean or flux." },
+            { "const": "standard_error", "title": "Standard error", "description": "Companion gives the uncertainty as defined by CF; the stored value is multiplier times one standard error. Requires uncertainty_type." },
+            { "const": "confidence_interval_lower", "title": "Confidence interval lower bound", "description": "Companion gives the lower endpoint of a confidence interval, not a distance from the estimate. Requires the upper bound with the same confidence_level and uncertainty_type." },
+            { "const": "confidence_interval_upper", "title": "Confidence interval upper bound", "description": "Companion gives the upper endpoint of a confidence interval, not a distance from the estimate. Requires the lower bound with the same confidence_level and uncertainty_type." },
+            { "const": "number_of_observations", "title": "Number of observations", "description": "Companion counts the observations underlying this value; unit 1." },
+            { "const": "detection_minimum", "title": "Detection minimum", "description": "Companion gives the smallest detectable signal, in units compatible with this column." }
+          ]
+        },
+        "confidence_level": {
+          "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "title": "Confidence level",
+          "description": "Confidence level of the interval as a fraction strictly between 0 and 1, for example 0.95 (not 95). Required for confidence interval bounds, not allowed for other relations."
+        },
+        "uncertainty_type": {
+          "title": "Uncertainty type",
+          "description": "Whether the uncertainty values are absolute or relative. Required for standard errors and confidence interval bounds, not allowed for other relations.",
+          "oneOf": [
+            { "const": "absolute", "title": "Absolute", "description": "In units compatible with this column: difference units for a standard error, the column's own units for interval endpoints." },
+            { "const": "relative", "title": "Relative", "description": "Dimensionless fractions of this column's value (0.05 means 5%); interval endpoints are ratios to the value, not relative half-widths." }
+          ]
+        },
+        "multiplier": {
+          "type": "number", "exclusiveMinimum": 0, "title": "Multiplier",
+          "description": "For standard errors only: the stored value is this multiple of one standard error. Defaults to 1."
+        },
+        "description": { "type": "string", "minLength": 1, "title": "Description", "description": "Human-readable explanation of the relationship." }
       },
       "allOf": [
         {
